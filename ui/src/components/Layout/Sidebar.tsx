@@ -16,12 +16,12 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 
 const navItems = [
-  { to: "/",           icon: Home,         label: "Dashboard"   },
-  { to: "/expenses",   icon: TrendingDown,  label: "Expenses"    },
-  { to: "/incomes",    icon: TrendingUp,    label: "Income"      },
-  { to: "/loans",      icon: CreditCard,    label: "Loans & EMI" },
-  { to: "/analytics",  icon: BarChart3,     label: "Analytics"   },
-  { to: "/ai",         icon: Bot,           label: "AI Advisor"  },
+  { to: "/", icon: Home, label: "Dashboard" },
+  { to: "/expenses", icon: TrendingDown, label: "Expenses" },
+  { to: "/incomes", icon: TrendingUp, label: "Income" },
+  { to: "/loans", icon: CreditCard, label: "Loans & EMI" },
+  { to: "/analytics", icon: BarChart3, label: "Analytics" },
+  { to: "/ai", icon: Bot, label: "AI Advisor" },
 ];
 
 export default function Sidebar() {
@@ -35,7 +35,6 @@ export default function Sidebar() {
 
   return (
     <aside className="flex flex-col w-64 min-h-screen bg-brand-900 text-white">
-      {/* Logo */}
       <div className="flex items-center gap-3 px-6 py-5 border-b border-white/10">
         <Wallet className="w-8 h-8 text-brand-500" />
         <div>
@@ -44,7 +43,6 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1">
         {navItems.map(({ to, icon: Icon, label }) => (
           <NavLink
@@ -65,7 +63,6 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* User + Logout */}
       <div className="px-3 pb-4 border-t border-white/10 pt-4 space-y-2">
         <div className="flex items-center gap-3 px-3 py-2">
           <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center font-semibold text-sm">
