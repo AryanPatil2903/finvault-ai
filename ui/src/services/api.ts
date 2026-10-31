@@ -18,7 +18,7 @@ import type {
   User,
 } from "@/types";
 
-const BASE_URL = "/api/v1";
+const BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
 
 // ── Axios Instance ────────────────────────────────────────────────────────────
 const api: AxiosInstance = axios.create({
