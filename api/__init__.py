@@ -1,0 +1,1 @@
+"""FinVault AI — API layer package."""

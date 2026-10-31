@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.coverage
+
+# Secrets & runtime
+.env
+logs/
+models/
+*.db
+
+# Data
+data/raw/*
+data/processed/*
+data/outputs/*
+!data/**/.gitkeep
+
+# Node
+ui/node_modules/
+ui/dist/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store

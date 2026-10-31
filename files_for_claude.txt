@@ -1,0 +1,1082 @@
+﻿
+===== database\models.py =====
+"""
+All SQLAlchemy ORM models for FinVault AI.
+Tables: User, Expense, Income, Loan, LoanPayment, Budget, AIConversation.
+"""
+
+import uuid
+from datetime import date, datetime
+from typing import List, Optional
+
+from sqlalchemy import (
+    Boolean, Column, Date, DateTime, Float,
+    ForeignKey, Integer, JSON, String, Text, Enum as SAEnum,
+)
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+
+from database.connection import Base
+
+
+def gen_uuid() -> str:
+    """Generate a new UUID4 string â€” used as default primary key."""
+    return str(uuid.uuid4())
+
+
+# â”€â”€ User â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+class User(Base):
+    """Application user â€” owns all financial records."""
+
+    __tablename__ = "users"
+
+    id: str = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    email: str = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash: str = Column(String(255), nullable=False)
+    full_name: str = Column(String(255), nullable=False)
+    phone: Optional[str] = Column(String(20), nullable=True)
+    currency: str = Column(String(10), default="INR")
+    monthly_income: float = Column(Float, default=0.0)  # For FOIR calculation
+    is_active: bool = Column(Boolean, default=True)
+    created_at: datetime = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at: datetime = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # â”€â”€ Relationships â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    expenses: List["Expense"] = relationship("Expense", back_populates="user", cascade="all, delete-orphan")
+    incomes: List["Income"] = relationship("Income", back_populates="user", cascade="all, delete-orphan")
+    loans: List["Loan"] = relationship("Loan", back_populates="user", cascade="all, delete-orphan")
+    budgets: List["Budget"] = relationship("Budget", back_populates="user", cascade="all, delete-orphan")
+    ai_conversations: List["AIConversation"] = relationship("AIConversation", back_populates="user", cascade="all, delete-orphan")
+
+
+# â”€â”€ Expense â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+class Expense(Base):
+    """Individual expense transaction."""
+
+    __tablename__ = "expenses"
+
+    id: str = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    user_id: str = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount: float = Column(Float, nullable=False)
+    category: str = Column(String(100), nullable=False)
+    description: str = Column(String(500), nullable=True)
+    transaction_date: date = Column(Date, nullable=False, index=True)
+    payment_method: str = Column(String(100), nullable=True)
+    tags: List[str] = Column(JSON, default=list)       # e.g. ["weekend", "family"]
+    receipt_url: Optional[str] = Column(String(500), nullable=True)
+    is_recurring: bool = Column(Boolean, default=False)
+    created_at: datetime = Column(DateTime(timezone=True), server_default=func.now())
+
+    user: "User" = relationship("User", back_populates="expenses")
+
+
+# â”€â”€ Income â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+class Income(Base):
+    """Individual income transaction."""
+
+    __tablename__ = "incomes"
+
+    id: str = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    user_id: str = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    amount: float = Column(Float, nullable=False)
+    category: str = Column(String(100), nullable=False)
+    source: str = Column(String(255), nullable=True)   # Employer name, client, etc.
+    description: str = Column(String(500), nullable=True)
+    transaction_date: date = Column(Date, nullable=False, index=True)
+    is_taxable: bool = Column(Boolean, default=True)
+    created_at: datetime = Column(DateTime(timezone=True), server_default=func.now())
+
+    user: "User" = relationship("User", back_populates="incomes")
+
+
+# â”€â”€ Loan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+class Loan(Base):
+    """Full loan record with all details a customer needs to track."""
+
+    __tablename__ = "loans"
+
+    id: str = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    user_id: str = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # â”€â”€ Core Loan Info â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    loan_name: str = Column(String(255), nullable=False)       # User-friendly label
+    loan_type: str = Column(String(100), nullable=False)
+    lender_name: str = Column(String(255), nullable=False)     # Bank / NBFC name
+    loan_account_number: str = Column(String(100), nullable=True)
+    loan_reference_number: str = Column(String(100), nullable=True)
+
+    # â”€â”€ Financial Terms â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    principal_amount: float = Column(Float, nullable=False)    # Original loan amount
+    annual_interest_rate: float = Column(Float, nullable=False) # e.g. 8.5 for 8.5%
+    tenure_months: int = Column(Integer, nullable=False)
+    emi_amount: float = Column(Float, nullable=False)          # Calculated or entered
+    interest_method: str = Column(String(50), default="Reducing Balance")
+    payment_frequency: str = Column(String(50), default="Monthly")
+
+    # â”€â”€ Dates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    disbursement_date: date = Column(Date, nullable=False)     # When loan was given
+    first_emi_date: date = Column(Date, nullable=False)
+    emi_due_day: int = Column(Integer, default=1)              # Day of month (1-28)
+    maturity_date: date = Column(Date, nullable=True)          # Last EMI date
+
+    # â”€â”€ Charges & Fees â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    processing_fee: float = Column(Float, default=0.0)
+    prepayment_penalty_percent: float = Column(Float, default=0.0)
+    late_payment_fee: float = Column(Float, default=0.0)
+    insurance_amount: float = Column(Float, default=0.0)       # If loan has insurance
+    other_charges: float = Column(Float, default=0.0)
+
+    # â”€â”€ Current Status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    outstanding_amount: float = Column(Float, nullable=False)  # Current balance
+    total_emis_paid: int = Column(Integer, default=0)
+    total_emis_remaining: int = Column(Integer, nullable=True)
+    status: str = Column(String(50), default="Active")         # Active/Closed/Overdue
+    is_co_applicant: bool = Column(Boolean, default=False)
+    co_applicant_name: Optional[str] = Column(String(255), nullable=True)
+
+    # â”€â”€ Contact â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    loan_manager_name: Optional[str] = Column(String(255), nullable=True)
+    loan_manager_phone: Optional[str] = Column(String(20), nullable=True)
+    customer_care_number: Optional[str] = Column(String(20), nullable=True)
+    branch_name: Optional[str] = Column(String(255), nullable=True)
+
+    # â”€â”€ Notes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    notes: Optional[str] = Column(Text, nullable=True)
+    created_at: datetime = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at: datetime = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user: "User" = relationship("User", back_populates="loans")
+    payments: List["LoanPayment"] = relationship("LoanPayment", back_populates="loan", cascade="all, delete-orphan", order_by="LoanPayment.payment_date")
+
+
+# â”€â”€ LoanPayment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+class LoanPayment(Base):
+    """Individual EMI payment record â€” one row per EMI paid."""
+
+    __tablename__ = "loan_payments"
+
+    id: str = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    loan_id: str = Column(UUID(as_uuid=False), ForeignKey("loans.id", ondelete="CASCADE"), nullable=False, index=True)
+    emi_number: int = Column(Integer, nullable=False)           # e.g. 1st, 2nd EMI
+    payment_date: date = Column(Date, nullable=False)
+    due_date: date = Column(Date, nullable=False)
+    amount_paid: float = Column(Float, nullable=False)          # Total EMI paid
+    principal_component: float = Column(Float, nullable=False)  # Principal portion
+    interest_component: float = Column(Float, nullable=False)   # Interest portion
+    outstanding_after_payment: float = Column(Float, nullable=False)
+    payment_method: str = Column(String(100), nullable=True)
+    transaction_id: Optional[str] = Column(String(255), nullable=True)
+    receipt_number: Optional[str] = Column(String(255), nullable=True)
+    is_prepayment: bool = Column(Boolean, default=False)        # Extra payment flag
+    prepayment_amount: float = Column(Float, default=0.0)
+    late_fee_paid: float = Column(Float, default=0.0)
+    notes: Optional[str] = Column(Text, nullable=True)
+    created_at: datetime = Column(DateTime(timezone=True), server_default=func.now())
+
+    loan: "Loan" = relationship("Loan", back_populates="payments")
+
+
+# â”€â”€ Budget â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+class Budget(Base):
+    """Monthly budget limit per category per user."""
+
+    __tablename__ = "budgets"
+
+    id: str = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    user_id: str = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    category: str = Column(String(100), nullable=False)
+    amount: float = Column(Float, nullable=False)
+    month: int = Column(Integer, nullable=False)    # 1-12
+    year: int = Column(Integer, nullable=False)
+    created_at: datetime = Column(DateTime(timezone=True), server_default=func.now())
+
+    user: "User" = relationship("User", back_populates="budgets")
+
+
+# â”€â”€ AIConversation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+class AIConversation(Base):
+    """Stores full AI chat history per user session."""
+
+    __tablename__ = "ai_conversations"
+
+    id: str = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    user_id: str = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: str = Column(String(255), default="New Conversation")
+    messages: List[dict] = Column(JSON, default=list)   # [{role, content, timestamp}]
+    created_at: datetime = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at: datetime = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user: "User" = relationship("User", back_populates="ai_conversations")
+
+===== database\connection.py =====
+"""
+Async SQLAlchemy engine, session factory, and base model setup.
+All database I/O in this application uses async/await throughout.
+"""
+
+from typing import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.orm import DeclarativeBase
+
+from config.settings import settings
+
+# â”€â”€ Declarative base shared by all ORM models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+class Base(DeclarativeBase):
+    """Parent class for all SQLAlchemy models."""
+    pass
+
+
+# â”€â”€ Engine â€” created once at module import â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+engine: AsyncEngine = create_async_engine(
+    settings.DATABASE_URL,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    echo=settings.DB_ECHO,
+    pool_pre_ping=True,          # Verify connection health before use
+    pool_recycle=3600,           # Recycle connections older than 1 hour
+)
+
+# â”€â”€ Session factory â€” use as async context manager â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+AsyncSessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,      # Prevent lazy-load errors after commit
+    autocommit=False,
+    autoflush=False,
+)
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """
+    FastAPI dependency that yields a database session per request.
+    Commits on success, rolls back on any exception.
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
+async def init_db() -> None:
+    """
+    Create all tables defined in models on application startup.
+    In production, use Alembic migrations instead.
+    """
+    # Import models so SQLAlchemy registers them before create_all
+    from database import models  # noqa: F401
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+async def dispose_db() -> None:
+    """Gracefully close all connections in the pool on shutdown."""
+    await engine.dispose()
+_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+_engine_kwargs = {"echo": settings.DB_ECHO}
+if not _is_sqlite:
+    _engine_kwargs.update(
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+
+engine: AsyncEngine = create_async_engine(settings.DATABASE_URL, **_engine_kwargs)
+
+===== api\app.py =====
+"""
+FastAPI application factory with lifespan management.
+This is the entry point for the ASGI server (uvicorn).
+"""
+from api.routes import ai_chat, auth, budgets, dashboard, expenses, incomes, loans
+# ...
+app.include_router(budgets.router, prefix=api_prefix)
+
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+from api.middleware import RequestLoggingMiddleware, setup_cors
+from api.routes import ai_chat, auth, dashboard, expenses, incomes, loans
+from config.logging_config import get_logger, setup_logging
+from config.settings import settings
+from database.connection import dispose_db, init_db
+
+setup_logging()
+logger = get_logger("app")
+
+
+# â”€â”€ Lifespan: startup + shutdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Manage application startup and graceful shutdown."""
+    logger.info("ðŸš€ FinVault AI starting up... (env: %s)", settings.ENVIRONMENT)
+    await init_db()
+    logger.info("âœ… Database tables ready.")
+    yield
+    logger.info("â¹  FinVault AI shutting down...")
+    await dispose_db()
+    logger.info("âœ… Database connections closed.")
+
+
+# â”€â”€ Application factory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+def create_app() -> FastAPI:
+    """Build and configure the FastAPI application instance."""
+    app = FastAPI(
+        title=settings.APP_NAME,
+        version=settings.APP_VERSION,
+        description="AI-powered personal finance & EMI management platform.",
+        docs_url="/docs" if settings.DEBUG else None,     # Disable docs in prod
+        redoc_url="/redoc" if settings.DEBUG else None,
+        lifespan=lifespan,
+    )
+
+    # â”€â”€ Middleware â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    setup_cors(app)
+    app.add_middleware(RequestLoggingMiddleware)
+
+    # â”€â”€ Routers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    api_prefix = "/api/v1"
+    app.include_router(auth.router, prefix=api_prefix)
+    app.include_router(expenses.router, prefix=api_prefix)
+    app.include_router(incomes.router, prefix=api_prefix)
+    app.include_router(loans.router, prefix=api_prefix)
+    app.include_router(dashboard.router, prefix=api_prefix)
+    app.include_router(ai_chat.router, prefix=api_prefix)
+
+    # â”€â”€ Health check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    @app.get("/health", tags=["System"])
+    async def health_check() -> JSONResponse:
+        return JSONResponse({"status": "ok", "version": settings.APP_VERSION})
+
+    logger.info("âœ… All routers registered.")
+    return app
+
+
+# â”€â”€ ASGI entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "api.app:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.DEBUG,
+        log_level="debug" if settings.DEBUG else "info",
+    )
+
+===== config\settings.py =====
+"""
+Central application configuration â€” all values loaded from environment.
+Never hardcode secrets; use .env file for all sensitive values.
+"""
+
+import os
+from functools import lru_cache
+from typing import List, Optional
+
+from dotenv import load_dotenv
+from pydantic_settings import BaseSettings
+
+load_dotenv()
+
+
+class Settings(BaseSettings):
+    """Application-wide settings sourced exclusively from environment variables."""
+
+    # â”€â”€ Application â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    APP_NAME: str = "FinVault AI"
+    APP_VERSION: str = "1.0.0"
+    DEBUG: bool = False
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+    ENVIRONMENT: str = "development"  # development | staging | production
+
+    # â”€â”€ Database â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    DATABASE_URL: str = (
+        "postgresql+asyncpg://finvault:finvault123@localhost:5432/finvault_db"
+    )
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_ECHO: bool = False  # Set True to log all SQL queries
+
+    # â”€â”€ Redis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    REDIS_URL: str = "redis://localhost:6379/0"
+    CACHE_TTL_SECONDS: int = 300  # 5 minutes default cache lifetime
+
+    # â”€â”€ Auth / JWT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    SECRET_KEY: str = "CHANGE_THIS_IN_PRODUCTION_USE_openssl_rand_hex_32"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+
+    # â”€â”€ AI Providers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    OPENAI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    AI_PROVIDER: str = "openai"          # openai | anthropic
+    AI_MODEL_OPENAI: str = "gpt-4o"
+    AI_MODEL_ANTHROPIC: str = "claude-sonnet-4-20250514"
+    AI_MAX_TOKENS: int = 2048
+    AI_TEMPERATURE: float = 0.3          # Lower = more factual for finance
+
+    # â”€â”€ CORS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+
+    # â”€â”€ Localisation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    DEFAULT_CURRENCY: str = "INR"
+    CURRENCY_SYMBOL: str = "â‚¹"
+    DEFAULT_TIMEZONE: str = "Asia/Kolkata"
+
+        class Config:
+        env_file = ".env"
+        case_sensitive = True
+        extra = "ignore"   # don't crash on unrelated env vars
+
+@lru_cache()
+def get_settings() -> Settings:
+    """Return a module-level cached Settings instance (instantiated once)."""
+    return Settings()
+
+
+# Module-level singleton for import convenience
+settings = get_settings()
+
+===== api\routes\loans.py =====
+"""
+Loan CRUD, EMI recording, amortization schedule, and prepayment calculator endpoints.
+"""
+
+from datetime import date
+from typing import Any, Dict, List
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from api.dependencies import get_current_user
+from api.schemas import (
+    EMICalculateRequest, LoanCreateRequest, LoanPaymentCreateRequest,
+    LoanPaymentResponse, LoanResponse, LoanUpdateRequest,
+)
+from config.logging_config import get_logger
+from database.connection import get_db
+from database.models import Loan, LoanPayment, User
+from src.finance import (
+    calculate_emi, calculate_prepayment_impact, generate_amortization_schedule,
+    get_loan_summary,
+)
+
+router = APIRouter(prefix="/loans", tags=["Loans & EMI"])
+logger = get_logger("loans")
+
+
+@router.post("", response_model=LoanResponse, status_code=status.HTTP_201_CREATED)
+async def create_loan(
+    body: LoanCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Loan:
+    """
+    Create a new loan record. If emi_amount not provided, it's auto-calculated
+    using the reducing balance formula.
+    """
+    # Auto-calculate EMI if not provided by user
+    emi = body.emi_amount or calculate_emi(
+        body.principal_amount,
+        body.annual_interest_rate,
+        body.tenure_months,
+        body.interest_method,
+    )
+
+    tenure_remaining = body.tenure_months  # Initially all EMIs remain
+
+    loan = Loan(
+        user_id=current_user.id,
+        loan_name=body.loan_name,
+        loan_type=body.loan_type,
+        lender_name=body.lender_name,
+        loan_account_number=body.loan_account_number,
+        loan_reference_number=body.loan_reference_number,
+        principal_amount=body.principal_amount,
+        annual_interest_rate=body.annual_interest_rate,
+        tenure_months=body.tenure_months,
+        emi_amount=emi,
+        interest_method=body.interest_method,
+        payment_frequency=body.payment_frequency,
+        disbursement_date=body.disbursement_date,
+        first_emi_date=body.first_emi_date,
+        emi_due_day=body.emi_due_day,
+        processing_fee=body.processing_fee,
+        prepayment_penalty_percent=body.prepayment_penalty_percent,
+        late_payment_fee=body.late_payment_fee,
+        insurance_amount=body.insurance_amount,
+        other_charges=body.other_charges,
+        outstanding_amount=body.principal_amount,
+        total_emis_paid=0,
+        total_emis_remaining=tenure_remaining,
+        is_co_applicant=body.is_co_applicant,
+        co_applicant_name=body.co_applicant_name,
+        loan_manager_name=body.loan_manager_name,
+        loan_manager_phone=body.loan_manager_phone,
+        customer_care_number=body.customer_care_number,
+        branch_name=body.branch_name,
+        notes=body.notes,
+    )
+    db.add(loan)
+    await db.flush()
+    logger.info("Loan created: %s for user %s", loan.loan_name, current_user.id)
+    return loan
+
+
+@router.get("", response_model=List[LoanResponse])
+async def list_loans(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    status_filter: str = None,
+) -> List[Loan]:
+    """List all loans for the current user, optionally filtered by status."""
+    query = select(Loan).where(Loan.user_id == current_user.id)
+    if status_filter:
+        query = query.where(Loan.status == status_filter)
+    result = await db.execute(query.order_by(Loan.disbursement_date.desc()))
+    return list(result.scalars().all())
+
+
+@router.get("/{loan_id}", response_model=LoanResponse)
+async def get_loan(
+    loan_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Loan:
+    """Get a single loan record with full details."""
+    result = await db.execute(
+        select(Loan).where(Loan.id == loan_id, Loan.user_id == current_user.id)
+    )
+    loan = result.scalar_one_or_none()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found.")
+    return loan
+
+
+@router.patch("/{loan_id}", response_model=LoanResponse)
+async def update_loan(
+    loan_id: str,
+    body: LoanUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Loan:
+    """Update loan details (status, outstanding, rate, etc.)."""
+    result = await db.execute(
+        select(Loan).where(Loan.id == loan_id, Loan.user_id == current_user.id)
+    )
+    loan = result.scalar_one_or_none()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found.")
+
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(loan, field, value)
+
+    await db.flush()
+    return loan
+
+
+@router.delete("/{loan_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_loan(
+    loan_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete a loan and all its payment records."""
+    result = await db.execute(
+        select(Loan).where(Loan.id == loan_id, Loan.user_id == current_user.id)
+    )
+    loan = result.scalar_one_or_none()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found.")
+    await db.delete(loan)
+
+
+# â”€â”€ Amortization Schedule â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@router.get("/{loan_id}/amortization")
+async def get_amortization(
+    loan_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Generate full amortization schedule for a loan.
+    Returns EMI breakdown per month: principal, interest, outstanding.
+    """
+    result = await db.execute(
+        select(Loan).where(Loan.id == loan_id, Loan.user_id == current_user.id)
+    )
+    loan = result.scalar_one_or_none()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found.")
+
+    schedule = generate_amortization_schedule(
+        principal=loan.principal_amount,
+        annual_interest_rate=loan.annual_interest_rate,
+        tenure_months=loan.tenure_months,
+        first_emi_date=loan.first_emi_date,
+        emi_amount=loan.emi_amount,
+        method=loan.interest_method,
+    )
+
+    summary = get_loan_summary(
+        loan.principal_amount,
+        loan.annual_interest_rate,
+        loan.tenure_months,
+        loan.first_emi_date,
+        loan.processing_fee,
+        loan.insurance_amount,
+        loan.interest_method,
+    )
+
+    return {
+        "loan_id": loan_id,
+        "summary": {
+            "principal": summary.principal,
+            "emi_amount": summary.emi_amount,
+            "total_payment": summary.total_payment,
+            "total_interest": summary.total_interest,
+            "interest_to_principal_ratio": summary.interest_to_principal_ratio,
+            "effective_cost": summary.effective_cost,
+            "break_even_month": summary.break_even_month,
+        },
+        "schedule": [
+            {
+                "emi_number": row.emi_number,
+                "due_date": row.due_date.isoformat(),
+                "emi_amount": row.emi_amount,
+                "principal_component": row.principal_component,
+                "interest_component": row.interest_component,
+                "outstanding_after": row.outstanding_after,
+                "total_interest_paid": row.total_interest_paid_so_far,
+                "total_principal_paid": row.total_principal_paid_so_far,
+            }
+            for row in schedule
+        ],
+    }
+
+
+# â”€â”€ EMI Payment Recording â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@router.post("/{loan_id}/payments", response_model=LoanPaymentResponse, status_code=201)
+async def record_emi_payment(
+    loan_id: str,
+    body: LoanPaymentCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> LoanPayment:
+    """
+    Record an EMI payment against a loan.
+    Automatically updates loan outstanding balance and EMI counters.
+    """
+    result = await db.execute(
+        select(Loan).where(Loan.id == loan_id, Loan.user_id == current_user.id)
+    )
+    loan = result.scalar_one_or_none()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found.")
+
+    payment = LoanPayment(
+        loan_id=loan_id,
+        emi_number=body.emi_number,
+        payment_date=body.payment_date,
+        due_date=body.due_date,
+        amount_paid=body.amount_paid,
+        principal_component=body.principal_component,
+        interest_component=body.interest_component,
+        outstanding_after_payment=body.outstanding_after_payment,
+        payment_method=body.payment_method,
+        transaction_id=body.transaction_id,
+        receipt_number=body.receipt_number,
+        is_prepayment=body.is_prepayment,
+        prepayment_amount=body.prepayment_amount,
+        late_fee_paid=body.late_fee_paid,
+        notes=body.notes,
+    )
+    db.add(payment)
+
+    # Update loan counters
+    loan.outstanding_amount = body.outstanding_after_payment
+    loan.total_emis_paid += 1
+    loan.total_emis_remaining = loan.tenure_months - loan.total_emis_paid
+    if loan.outstanding_amount <= 0:
+        loan.status = "Closed"
+
+    await db.flush()
+    return payment
+
+
+@router.get("/{loan_id}/payments", response_model=List[LoanPaymentResponse])
+async def list_payments(
+    loan_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> List[LoanPayment]:
+    """Retrieve full payment history for a loan."""
+    result = await db.execute(
+        select(Loan).where(Loan.id == loan_id, Loan.user_id == current_user.id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Loan not found.")
+
+    payments_result = await db.execute(
+        select(LoanPayment)
+        .where(LoanPayment.loan_id == loan_id)
+        .order_by(LoanPayment.emi_number)
+    )
+    return list(payments_result.scalars().all())
+
+
+# â”€â”€ Prepayment Calculator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@router.post("/{loan_id}/prepayment-impact")
+async def prepayment_impact(
+    loan_id: str,
+    prepayment_amount: float,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    Calculate the impact of making a lump-sum prepayment on this loan.
+    Returns: EMIs saved, interest saved, new tenure.
+    """
+    result = await db.execute(
+        select(Loan).where(Loan.id == loan_id, Loan.user_id == current_user.id)
+    )
+    loan = result.scalar_one_or_none()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found.")
+
+    if prepayment_amount <= 0:
+        raise HTTPException(status_code=400, detail="Prepayment amount must be positive.")
+
+    scenario = calculate_prepayment_impact(
+        current_outstanding=loan.outstanding_amount,
+        annual_interest_rate=loan.annual_interest_rate,
+        emis_remaining=loan.total_emis_remaining or loan.tenure_months,
+        prepayment_amount=prepayment_amount,
+        first_remaining_emi_date=date.today(),
+        method=loan.interest_method,
+    )
+
+    prepayment_penalty = round(
+        prepayment_amount * (loan.prepayment_penalty_percent / 100), 2
+    )
+
+    return {
+        "loan_id": loan_id,
+        "prepayment_amount": prepayment_amount,
+        "prepayment_penalty": prepayment_penalty,
+        "net_prepayment": prepayment_amount + prepayment_penalty,
+        "original_emis_remaining": scenario.original_emis_remaining,
+        "new_emis_remaining": scenario.new_emis_remaining,
+        "emis_saved": scenario.emis_saved,
+        "interest_saved": scenario.interest_saved,
+        "new_outstanding": scenario.new_outstanding,
+        "is_worth_it": scenario.interest_saved > prepayment_penalty,
+    }
+
+
+# â”€â”€ Standalone EMI Calculator (no auth required) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@router.post("/calculator/emi")
+async def emi_calculator(body: EMICalculateRequest) -> Dict[str, Any]:
+    """
+    Public EMI calculator endpoint â€” no authentication required.
+    Returns EMI, total payment, and full amortization schedule.
+    """
+    emi = calculate_emi(
+        body.principal, body.annual_interest_rate, body.tenure_months, body.method
+    )
+    summary = get_loan_summary(
+        body.principal, body.annual_interest_rate, body.tenure_months,
+        body.first_emi_date, body.processing_fee, body.insurance_amount, body.method
+    )
+
+    return {
+        "emi_amount": emi,
+        "total_payment": summary.total_payment,
+        "total_interest": summary.total_interest,
+        "effective_cost": summary.effective_cost,
+        "interest_to_principal_ratio": summary.interest_to_principal_ratio,
+        "break_even_month": summary.break_even_month,
+    }
+@router.post("/{loan_id}/pay-next", response_model=LoanPaymentResponse, status_code=201)
+async def pay_next_emi(
+    loan_id: str,
+    payment_method: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> LoanPayment:
+    """
+    Mark the next scheduled EMI as paid, using the amortization schedule
+    for the principal/interest split and the new outstanding balance.
+    """
+    result = await db.execute(
+        select(Loan).where(Loan.id == loan_id, Loan.user_id == current_user.id)
+    )
+    loan = result.scalar_one_or_none()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found.")
+    if loan.total_emis_paid >= loan.tenure_months:
+        raise HTTPException(status_code=400, detail="All EMIs are already paid.")
+
+    schedule = generate_amortization_schedule(
+        loan.principal_amount, loan.annual_interest_rate, loan.tenure_months,
+        loan.first_emi_date, loan.emi_amount, loan.interest_method,
+    )
+    row = schedule[loan.total_emis_paid]  # Next unpaid EMI
+
+    payment = LoanPayment(
+        loan_id=loan_id,
+        emi_number=row.emi_number,
+        payment_date=date.today(),
+        due_date=row.due_date,
+        amount_paid=row.emi_amount,
+        principal_component=row.principal_component,
+        interest_component=row.interest_component,
+        outstanding_after_payment=row.outstanding_after,
+        payment_method=payment_method,
+    )
+    db.add(payment)
+
+    loan.outstanding_amount = row.outstanding_after
+    loan.total_emis_paid += 1
+    loan.total_emis_remaining = loan.tenure_months - loan.total_emis_paid
+    if loan.outstanding_amount <= 0:
+        loan.status = "Closed"
+
+    await db.flush()
+    return payment
+
+===== ui\src\pages\Loans.tsx =====
+/**
+ * Loans & EMI management page â€” list, add, view amortization, record payments.
+ */
+
+import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { CreditCard, Plus, Calculator } from "lucide-react";
+import LoanCard from "@/components/EMI/LoanCard";
+import AmortizationTable from "@/components/EMI/AmortizationTable";
+import { useFinanceStore } from "@/store/financeStore";
+import { loanApi } from "@/services/api";
+import type { AmortizationSchedule, Loan } from "@/types";
+
+export default function Loans() {
+  const { loans, fetchLoans, isLoading } = useFinanceStore();
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
+  const [amortization, setAmortization] = useState<AmortizationSchedule | null>(null);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
+
+  // Simple add loan form state
+  const [form, setForm] = useState({
+    loan_name: "", loan_type: "Personal Loan", lender_name: "",
+    principal_amount: "", annual_interest_rate: "", tenure_months: "",
+    disbursement_date: "", first_emi_date: "", emi_due_day: "1",
+    interest_method: "Reducing Balance", processing_fee: "0",
+  });
+
+  useEffect(() => { fetchLoans(); }, [fetchLoans]);
+
+  const handleViewSchedule = async (loan: Loan) => {
+    setSelectedLoan(loan);
+    setLoadingSchedule(true);
+    try {
+      const { data } = await loanApi.getAmortization(loan.id);
+      setAmortization(data);
+    } catch {
+      toast.error("Failed to load amortization schedule.");
+    } finally {
+      setLoadingSchedule(false);
+    }
+  };
+
+  const handleAddLoan = async () => {
+    try {
+      await loanApi.create({
+        ...form,
+        principal_amount: parseFloat(form.principal_amount),
+        annual_interest_rate: parseFloat(form.annual_interest_rate),
+        tenure_months: parseInt(form.tenure_months),
+        emi_due_day: parseInt(form.emi_due_day),
+        processing_fee: parseFloat(form.processing_fee),
+      } as any);
+      toast.success("Loan added successfully!");
+      setShowAddForm(false);
+      fetchLoans();
+    } catch (e: any) {
+      toast.error(e.response?.data?.detail || "Failed to add loan.");
+    }
+  };
+
+  const totalOutstanding = loans.reduce((s, l) => s + l.outstanding_amount, 0);
+  const totalEMI = loans.filter(l => l.status === "Active").reduce((s, l) => s + l.emi_amount, 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Loans & EMI Tracker</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Total outstanding: â‚¹{totalOutstanding.toLocaleString("en-IN")} â€¢
+            Monthly EMI: â‚¹{totalEMI.toLocaleString("en-IN")}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAddForm(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors text-sm font-medium"
+        >
+          <Plus className="w-4 h-4" /> Add Loan
+        </button>
+      </div>
+
+      {/* Loan Cards */}
+      {loans.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">
+          <CreditCard className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p className="font-medium">No loans added yet.</p>
+          <p className="text-sm">Add your first loan to start tracking EMIs.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {loans.map((loan) => (
+            <LoanCard
+              key={loan.id}
+              loan={loan}
+              onViewSchedule={handleViewSchedule}
+              onRecordPayment={(l) => toast(`Record EMI for ${l.loan_name}`)}
+            />
+          ))}
+        </div>
+      )}
+      const handleRecordPayment = async (loan: Loan) => {
+  try {
+    await loanApi.payNext(loan.id, "UPI");
+    toast.success(`EMI recorded for ${loan.loan_name}`);
+    fetchLoans();
+  } catch (e: any) {
+    toast.error(e.response?.data?.detail || "Could not record EMI.");
+  }
+};
+// ...
+<LoanCard ... onRecordPayment={handleRecordPayment} />
+
+      {/* Amortization Schedule Modal */}
+      {selectedLoan && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Amortization Schedule â€” {selectedLoan.loan_name}
+                </h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {selectedLoan.lender_name} â€¢ {selectedLoan.annual_interest_rate}% p.a. â€¢
+                  {selectedLoan.interest_method}
+                </p>
+              </div>
+              <button
+                onClick={() => { setSelectedLoan(null); setAmortization(null); }}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+              >
+                Ã—
+              </button>
+            </div>
+            <div className="overflow-y-auto p-6">
+              {loadingSchedule ? (
+                <div className="flex items-center justify-center h-40">
+                  <div className="animate-spin rounded-full h-8 w-8 border-4 border-brand-500 border-t-transparent" />
+                </div>
+              ) : amortization ? (
+                <AmortizationTable data={amortization} paidCount={selectedLoan.total_emis_paid} />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Loan Modal */}
+      {showAddForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold">Add New Loan</h2>
+            </div>
+            <div className="p-6 space-y-4">
+              {[
+                { label: "Loan Name", key: "loan_name", type: "text" },
+                { label: "Lender / Bank Name", key: "lender_name", type: "text" },
+                { label: "Principal Amount (â‚¹)", key: "principal_amount", type: "number" },
+                { label: "Annual Interest Rate (%)", key: "annual_interest_rate", type: "number" },
+                { label: "Tenure (months)", key: "tenure_months", type: "number" },
+                { label: "Disbursement Date", key: "disbursement_date", type: "date" },
+                { label: "First EMI Date", key: "first_emi_date", type: "date" },
+                { label: "EMI Due Day (1-28)", key: "emi_due_day", type: "number" },
+                { label: "Processing Fee (â‚¹)", key: "processing_fee", type: "number" },
+              ].map(({ label, key, type }) => (
+                <div key={key}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+                  <input
+                    type={type}
+                    value={(form as any)[key]}
+                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none text-sm"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="p-6 border-t border-gray-200 flex gap-3">
+              <button
+                onClick={() => setShowAddForm(false)}
+                className="flex-1 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddLoan}
+                className="flex-1 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700"
+              >
+                Add Loan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,39 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements.txt aiosqlite pytest-asyncio httpx
+      - run: python -m pytest tests/ -v --tb=short
+        env: { ENVIRONMENT: test }
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: ui }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm ci
+      - run: npm run build
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install flake8 black
+      - run: black --check src/ api/ config/ database/
+      - run: flake8 src/ api/ config/ database/ --max-line-length=100

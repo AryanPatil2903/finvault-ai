@@ -1,0 +1,1 @@
+"""FinVault AI — core business logic package."""
