@@ -3,8 +3,14 @@
  */
 
 import {
-  BarChart3, Bot, CreditCard, DollarSign,
-  Home, LogOut, Settings, TrendingDown, TrendingUp, Wallet,
+  BarChart3,
+  Bot,
+  CreditCard,
+  Home,
+  LogOut,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
